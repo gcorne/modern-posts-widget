@@ -30,8 +30,6 @@ function modern_posts_widgets_init() {
 }
 add_action('widgets_init', 'modern_posts_widgets_init');
 
-
-
 class ModernPostsWidget extends WP_Widget {
 
 	protected $defaults = array(
@@ -41,7 +39,9 @@ class ModernPostsWidget extends WP_Widget {
 		'number' => 1
 	);
 	
-
+	/**
+	 * Old school object constructor.
+	 */
 	public function ModernPostsWidget() {
 		$widget_ops = array(
 			'classname' => 'widget-modern-posts',
@@ -50,13 +50,21 @@ class ModernPostsWidget extends WP_Widget {
 
 		$this->WP_Widget('modern-posts', __('Modern Posts'), $widget_ops);
 	}
-
+	/**
+	 * Output widget markup.
+	 *
+	 * @global object $post
+	 * @param array $args
+	 * @param array $instance
+	 *
+	 */
 	public function widget($args, $instance) {
+		global $post;
 
 		extract($args);
 		unset($args);
 		
-		$show = apply_filters('modern_posts_visibility', true);
+		$show = apply_filters('modern_posts_visibility', true, $instance);
 		if($show == false) return;
 		
 		$instance = wp_parse_args($instance, $this->defaults);
@@ -64,20 +72,14 @@ class ModernPostsWidget extends WP_Widget {
 		$title = $instance['title'];
 
 
-		if(!empty($instance['title_href'])) {
+		if(!empty($instance['title_href']) && !empty($instance['title'])) {
 			$title = sprintf('<a href="%s">%s</a>', esc_attr($instance['title_href']), $title);
 		}
-			
-		$query_args = array(
-			'post_type' => 'post',
-			'cat' => $instance['category'],
-			'posts_per_page' => $instance['number']
-		);
-			
-		$query_args = apply_filters('modern_posts_query_args', $query_args);
+
+		$query_args = $this->build_query($instance);
 		$query = new WP_Query($query_args);
 
-		$output = apply_filters('modern_posts_template', '', &$query);
+		$output = apply_filters('modern_posts_template', '', &$query, $instance);
 
 		wp_reset_postdata();
 
@@ -88,7 +90,40 @@ class ModernPostsWidget extends WP_Widget {
 			echo $after_widget;
 		}
 	}
+	/**
+	 * Generate query_args to be passed to instance of WP_Query. Method is broken
+	 * out so that the widget can be extended.
+	 *
+	 * @global  $post
+	 * @param array $instance
+	 * @return array $query_args
+	 */
 
+	public function build_query($instance) {
+		global $post;
+
+		$query_args = array(
+			'post_type' => 'post',
+			'cat' => $instance['category'],
+			'posts_per_page' => $instance['number']
+		);
+
+		if(is_single()) {
+			$query_args['post__not_in'] = (array) $post->ID;
+		}
+
+		return apply_filters('modern_posts_query_args', $query_args, $instance);
+
+		
+	}
+
+	/**
+	 * Merge and validate new form values with the previous values.
+	 *
+	 * @param array $new_instance
+	 * @param array $old_instance
+	 * @return array $instance
+	 */
 	public function update($new_instance, $old_instance) {
 		$instance = $old_instance;
 
@@ -97,11 +132,15 @@ class ModernPostsWidget extends WP_Widget {
 		$instance['category'] = (int) $new_instance['category'];
 		$instance['number'] = (int) $new_instance['number'];
 
-		error_log(sprintf("modern posts: %s", print_r($new_instance, true)));
+		//error_log(sprintf("modern posts: %s", print_r($new_instance, true)));
 		
 		return $instance;
 	}
-
+	/**
+	 * Generate widget control form elements.
+	 *
+	 * @param array $instance
+	 */
 	public function form($instance) {
 		
 		$args = wp_parse_args($instance, $this->defaults);
@@ -118,15 +157,31 @@ class ModernPostsWidget extends WP_Widget {
 		include('interface/widget-controls.php');
 	}
 
-	
+	/**
+	 * Form field helper.
+	 *
+	 * @param string $name
+	 */
 	public function field_id($name) {
 		echo $this->get_field_id($name);
 	}
 
+	/**
+	 * Form field helper.
+	 *
+	 * @param string $name
+	 */
 	public function field_name($name) {
 		echo $this->get_field_name($name);
 	}
-
+	/**
+	 * Default widget template.
+	 * 
+	 * @global object $post
+	 * @param string $content
+	 * @param WP_Query $query
+	 * @return string
+	 */
 	static function template($content, WP_Query $query) {
 		global $post;
 
@@ -137,7 +192,7 @@ class ModernPostsWidget extends WP_Widget {
 			while($query->have_posts()) {
 				$query->the_post();
 
-				$content .= sprintf('<li>%s<a href="%s">%s</a></li>', get_the_post_thumbnail($post->ID, 'thumbnail'), get_permalink(), get_the_title());
+				$content .= sprintf('<li><a href="%s">%s</a></li>', get_permalink(), get_the_title());
 			
 			}
 			$content .= '</ul>';
